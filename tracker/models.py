@@ -1,3 +1,5 @@
+import hashlib
+
 from django.conf import settings
 from django.db import models
 
@@ -35,13 +37,20 @@ class Job(models.Model):
     url = models.URLField(max_length=1000)
     yoe_min = models.PositiveSmallIntegerField(null=True, blank=True)
     yoe_max = models.PositiveSmallIntegerField(null=True, blank=True)
-    fingerprint = models.CharField(max_length=64)      # dedupe key
+    fingerprint = models.CharField(max_length=64, editable=False, blank=True)     # dedupe key
     stage = models.CharField(max_length=20, choices=JobStage.choices, default=JobStage.NEW)
     score = models.FloatField(null=True, blank=True)
     reasons = models.JSONField(default=list, blank=True)
     apply_method = models.CharField(max_length=10, blank=True)   # auto | manual
     raw = models.JSONField(default=dict, blank=True)
     first_seen_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if not self.fingerprint:
+            fingerprint_source  = f"{self.source}|{self.company.strip().lower()}|{self.title.strip().lower()}|{self.location.strip().lower()}"
+            self.fingerprint = hashlib.sha256(fingerprint_source.encode()).hexdigest()
+        super().save(*args, **kwargs)
+    
 
     class Meta:
         constraints = [

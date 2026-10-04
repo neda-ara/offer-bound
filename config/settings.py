@@ -25,6 +25,8 @@ environ.Env.read_env(BASE_DIR / ".env")
 SECRET_KEY = env("SECRET_KEY")
 DEBUG = env("DEBUG")
 DATABASES = {"default": env.db()}
+GMAIL_USER = env("GMAIL_USER", default="")
+GMAIL_APP_PASSWORD = env("GMAIL_APP_PASSWORD", default="")
 
 # Application definition
 
@@ -68,7 +70,7 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 
 # Password validation
-# https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
+# https://docs.djanFgoproject.com/en/5.2/ref/settings/#auth-password-validators
 
 AUTH_PASSWORD_VALIDATORS = [
     {

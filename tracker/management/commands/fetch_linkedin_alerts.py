@@ -12,7 +12,7 @@ from django.utils import timezone
 from tracker.models import Job, JobStage
 
 SEPARATOR_RE = re.compile(r'\n-{5,}\n')
-BADGE_RE = re.compile(r'^(Apply with resume & profile|Easy Apply|\d+ connections?|Actively recruiting)$', re.IGNORECASE)
+BADGE_RE = re.compile(r'^(Apply with resume & profile|Easy Apply|\d+ connections?|\d+ company alumni?|Actively recruiting)$', re.IGNORECASE)
 HEADER_RE = re.compile(r'^(Your job alert for|New jobs (in|match))', re.IGNORECASE)
 VIEW_JOB_RE = re.compile(r'^View job:\s*(\S+)', re.IGNORECASE)
 SEE_ALL_RE = re.compile(r'^See all jobs', re.IGNORECASE)
@@ -20,6 +20,7 @@ SEE_ALL_RE = re.compile(r'^See all jobs', re.IGNORECASE)
 
 def parse_linkedin_digest(text: str) -> list[dict]:
     """Splits a LinkedIn job-alert digest's plain-text body into job entries."""
+    text = text.replace('\r\n', '\n').replace('\r', '\n')  # normalize CRLF/CR to LF
     blocks = SEPARATOR_RE.split(text)
     jobs = []
     for block in blocks:
@@ -75,6 +76,8 @@ class Command(BaseCommand):
         parser.add_argument("--owner", required=True, help="Username of the Job owner")
         parser.add_argument("--label", default="JobAlerts/LinkedIn", help="Gmail label/folder to scan")
         parser.add_argument("--dry-run", action="store_true", help="Parse and print, don't write to DB")
+        parser.add_argument("--include-read", action="store_true", help="Scan all messages, not just unread")
+        parser.add_argument("--debug", action="store_true", help="Dump raw body of unparseable emails to files")
 
     def handle(self, *args, **options):
         User = get_user_model()
@@ -94,12 +97,14 @@ class Command(BaseCommand):
         if status != "OK":
             raise CommandError(f"Could not open label '{options['label']}' — check it exists in Gmail")
 
-        status, data = imap.search(None, "UNSEEN")
+        search_criteria = "ALL" if options["include_read"] else "UNSEEN"
+        status, data = imap.search(None, search_criteria)
         if status != "OK":
             raise CommandError("IMAP search failed")
 
         msg_nums = data[0].split()
-        self.stdout.write(f"Found {len(msg_nums)} unread message(s) in {options['label']}")
+        scope_label = "message(s)" if options["include_read"] else "unread message(s)"
+        self.stdout.write(f"Found {len(msg_nums)} {scope_label} in {options['label']}")
 
         created, dupes, skipped = 0, 0, 0
 
@@ -117,6 +122,12 @@ class Command(BaseCommand):
 
             if not parsed_jobs:
                 self.stdout.write(self.style.WARNING(f"  No jobs parsed from: {subject}"))
+                if options.get("debug"):
+                    safe_name = re.sub(r'[^a-zA-Z0-9]+', '_', subject)[:50]
+                    debug_path = f"debug_{safe_name}.txt"
+                    with open(debug_path, "w", encoding="utf-8") as f:
+                        f.write(repr(body))  # repr shows hidden chars like \xa0, \r, etc.
+                    self.stdout.write(f"    -> dumped to {debug_path}")
                 skipped += 1
                 continue
 
